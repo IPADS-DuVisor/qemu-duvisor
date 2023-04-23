@@ -218,6 +218,26 @@
 #define HGATP_PPN            SATP64_PPN
 #endif
 
+/* HU CSRs BEGIN */
+#define HU_RW_CSR_OFFSET    (0x800)
+#define HU_RW_CSR_MASK      (0xff)
+#define MAP_RW_H_TO_HU(h_csr) (HU_RW_CSR_OFFSET | (HU_RW_CSR_MASK & h_csr))
+
+#define CSR_HUSTATUS         MAP_RW_H_TO_HU(CSR_HSTATUS)
+#define CSR_HUIE             MAP_RW_H_TO_HU(CSR_HIE)
+#define CSR_HUCOUNTEREN      MAP_RW_H_TO_HU(CSR_HCOUNTEREN)
+#define CSR_HUTVAL           MAP_RW_H_TO_HU(CSR_HTVAL)
+#define CSR_HUVIP            MAP_RW_H_TO_HU(CSR_HVIP)
+#define CSR_HUIP             MAP_RW_H_TO_HU(CSR_HIP)
+#define CSR_HUTINST          MAP_RW_H_TO_HU(CSR_HTINST)
+#define CSR_HUGATP           MAP_RW_H_TO_HU(CSR_HGATP)
+#define CSR_HUTIMEDELTA      MAP_RW_H_TO_HU(CSR_HTIMEDELTA)
+#define CSR_HUTIMEDELTAH     MAP_RW_H_TO_HU(CSR_HTIMEDELTAH)
+
+//#define CSR_HUGEIE           0x607
+//#define CSR_HUGEIP           0xE12
+/* HU CSRs END */
+
 /* Virtual CSRs */
 #define CSR_VSSTATUS        0x200
 #define CSR_VSIE            0x204
@@ -228,6 +248,30 @@
 #define CSR_VSTVAL          0x243
 #define CSR_VSIP            0x244
 #define CSR_VSATP           0x280
+
+/* HU CSRs BEGIN */
+#define HUVS_RW_CSR_OFFSET    (0x400)
+#define HUVS_RW_CSR_MASK      (0xff)
+#define MAP_RW_H_TO_HUVS(vs_csr) (HUVS_RW_CSR_OFFSET | (HUVS_RW_CSR_MASK & vs_csr))
+/* User level virtual CSRs */
+#define CSR_HUVSSTATUS        MAP_RW_H_TO_HUVS(CSR_VSSTATUS)
+#define CSR_HUVSIE            MAP_RW_H_TO_HUVS(CSR_VSIE)
+#define CSR_HUVSTVEC          MAP_RW_H_TO_HUVS(CSR_VSTVEC)
+#define CSR_HUVSSCRATCH       MAP_RW_H_TO_HUVS(CSR_VSSCRATCH)
+#define CSR_HUVSEPC           MAP_RW_H_TO_HUVS(CSR_VSEPC)
+#define CSR_HUVSCAUSE         MAP_RW_H_TO_HUVS(CSR_VSCAUSE)
+#define CSR_HUVSTVAL          MAP_RW_H_TO_HUVS(CSR_VSTVAL)
+#define CSR_HUVSIP            MAP_RW_H_TO_HUVS(CSR_VSIP)
+#define CSR_HUVSATP           MAP_RW_H_TO_HUVS(CSR_VSATP)
+
+#define CSR_VTIMECMP            0x401
+#define CSR_VTIMECTL            0x402
+#define CSR_VTIMECMPH           0x481
+#define CSR_VCPUID              0x482
+#define CSR_VIPI0               0x483
+#define CSR_VIPI1               0x484
+#define CSR_VIPI2               0x485
+#define CSR_VIPI3               0x486
 
 #define CSR_MTINST          0x34a
 #define CSR_MTVAL2          0x34b
@@ -450,6 +494,31 @@
 #define HSTATUS_WPRI HSTATUS64_WPRI
 #endif
 
+/* hustatus CSR bits BEGIN */
+#define HUSTATUS_UIE         0x00000001
+#define HUSTATUS_UPIE        0x00000010
+#define HUSTATUS_VSBE         0x00000020
+#define HUSTATUS_GVA          0x00000040
+#define HUSTATUS_UPV          0x00000080
+#define HUSTATUS_UPVP         0x00000100
+#define HUSTATUS_VGEIN        0x0003F000
+#define HUSTATUS_VTVM         0x00100000
+#define HUSTATUS_VTW          0x00200000
+#define HUSTATUS_VTSR         0x00400000
+#if defined(TARGET_RISCV64)
+#define HUSTATUS_VSXL        0x300000000
+#endif
+
+#define HUSTATUS32_WPRI       0xFF8FF87E
+#define HUSTATUS64_WPRI       0xFFFFFFFFFF8FF87EULL
+
+#if defined(TARGET_RISCV32)
+#define HUSTATUS_WPRI HUSTATUS32_WPRI
+#elif defined(TARGET_RISCV64)
+#define HUSTATUS_WPRI HUSTATUS64_WPRI
+#endif
+/* hustatus CSR bits END */
+
 #define HCOUNTEREN_CY        (1 << 0)
 #define HCOUNTEREN_TM        (1 << 1)
 #define HCOUNTEREN_IR        (1 << 2)
@@ -538,6 +607,7 @@
 #define RISCV_EXCP_STORE_AMO_ADDR_MIS            0x6
 #define RISCV_EXCP_STORE_AMO_ACCESS_FAULT        0x7
 #define RISCV_EXCP_U_ECALL                       0x8
+#define RISCV_EXCP_VU_ECALL                       0x18
 #define RISCV_EXCP_S_ECALL                      0x9
 #define RISCV_EXCP_VS_ECALL                      0xa
 #define RISCV_EXCP_M_ECALL                       0xb
@@ -565,6 +635,7 @@
 #define IRQ_S_EXT                          9
 #define IRQ_VS_EXT                         10
 #define IRQ_M_EXT                          11
+#define IRQ_U_VTIMER                       16
 
 /* mip masks */
 #define MIP_USIP                           (1 << IRQ_U_SOFT)
@@ -579,6 +650,7 @@
 #define MIP_SEIP                           (1 << IRQ_S_EXT)
 #define MIP_VSEIP                          (1 << IRQ_VS_EXT)
 #define MIP_MEIP                           (1 << IRQ_M_EXT)
+#define MIP_UVTIP                      (1 << IRQ_U_VTIMER)
 
 /* sip masks */
 #define SIP_SSIP                           MIP_SSIP

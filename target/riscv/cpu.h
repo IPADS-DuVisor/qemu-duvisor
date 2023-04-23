@@ -26,6 +26,8 @@
 #include "fpu/softfloat-types.h"
 #include "qom/object.h"
 
+#define HU_EXT
+
 #define TCG_GUEST_DEFAULT_MO 0
 
 #define TYPE_RISCV_CPU "riscv-cpu"
@@ -66,6 +68,7 @@
 #define RVS RV('S')
 #define RVU RV('U')
 #define RVH RV('H')
+#define RVZ RV('Z')
 
 /* S extension denotes that Supervisor mode exists, however it is possible
    to have a core that support S mode but does not have an MMU and there
@@ -172,6 +175,13 @@ struct CPURISCVState {
     target_ulong mcause;
     target_ulong mtval;  /* since: priv-1.10.0 */
 
+    /* Readable counterpart of S* CSRs in HU-mode */
+    target_ulong utvec;
+    target_ulong uepc;
+    target_ulong uscratch;
+    target_ulong ucause;
+    target_ulong utval;
+
     /* Hypervisor CSRs */
     target_ulong hstatus;
     target_ulong hedeleg;
@@ -181,6 +191,14 @@ struct CPURISCVState {
     target_ulong htinst;
     target_ulong hgatp;
     uint64_t htimedelta;
+
+    /* HU CSRs */
+    target_ulong hustatus;
+    target_ulong hucounteren;
+    target_ulong hutval;
+    target_ulong hutinst;
+    target_ulong hugatp;
+    uint64_t hutimedelta;
 
     /* Virtual CSRs */
     /*
@@ -206,6 +224,8 @@ struct CPURISCVState {
     target_ulong stval_hs;
     target_ulong satp_hs;
     uint64_t mstatus_hs;
+    target_ulong sedeleg;
+    target_ulong sideleg;
 
     target_ulong scounteren;
     target_ulong mcounteren;
@@ -217,13 +237,26 @@ struct CPURISCVState {
     uint64_t mfromhost;
     uint64_t mtohost;
     uint64_t timecmp;
+    uint64_t vtimecmp;
+    uint32_t vtimectl;
 
+    uint64_t vcpuid;
     /* physical memory protection */
     pmp_table_t pmp_state;
 
     /* machine specific rdtime callback */
     uint64_t (*rdtime_fn)(uint32_t);
     uint32_t rdtime_fn_arg;
+
+    /* machine specific rdtime callback */
+    uint64_t (*vtimecmp_fn)(uint32_t, CPURISCVState *);
+    uint32_t vtimecmp_fn_arg;
+
+    uint64_t (*wrvcpuid_fn)(CPURISCVState *);
+
+    uint64_t (*wrvipi_fn)(uint64_t, int);
+
+    uint64_t (*rdvipi_fn)(int);
 
     /* True if in debugger mode.  */
     bool debugger;
@@ -233,6 +266,7 @@ struct CPURISCVState {
 
     /* Fields from here on are preserved across CPU reset. */
     QEMUTimer *timer; /* Internal timer */
+    QEMUTimer *vtimer; /* Internal vtimer */
 };
 
 OBJECT_DECLARE_TYPE(RISCVCPU, RISCVCPUClass,
@@ -280,6 +314,7 @@ struct RISCVCPU {
         bool ext_u;
         bool ext_h;
         bool ext_v;
+        bool ext_z;
         bool ext_counters;
         bool ext_ifencei;
         bool ext_icsr;
@@ -323,6 +358,8 @@ bool riscv_cpu_virt_enabled(CPURISCVState *env);
 void riscv_cpu_set_virt_enabled(CPURISCVState *env, bool enable);
 bool riscv_cpu_force_hs_excep_enabled(CPURISCVState *env);
 void riscv_cpu_set_force_hs_excep(CPURISCVState *env, bool enable);
+bool riscv_cpu_force_hu_excep_enabled(CPURISCVState *env);
+void riscv_cpu_set_force_hu_excep(CPURISCVState *env, bool enable);
 bool riscv_cpu_two_stage_lookup(int mmu_idx);
 int riscv_cpu_mmu_index(CPURISCVState *env, bool ifetch);
 hwaddr riscv_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
@@ -351,6 +388,14 @@ uint32_t riscv_cpu_update_mip(RISCVCPU *cpu, uint32_t mask, uint32_t value);
 #define BOOL_TO_MASK(x) (-!!(x)) /* helper for riscv_cpu_update_mip value */
 void riscv_cpu_set_rdtime_fn(CPURISCVState *env, uint64_t (*fn)(uint32_t),
                              uint32_t arg);
+void riscv_cpu_set_vtimecmp_fn(CPURISCVState *env, uint64_t (*fn)(uint32_t, CPURISCVState *),
+                             uint32_t arg);
+void riscv_cpu_set_wrvcpuid_fn(CPURISCVState *env, uint64_t (*fn)(CPURISCVState *env));
+
+void riscv_cpu_set_wrvipi_fn(CPURISCVState *env, uint64_t (*fn)(uint64_t value, int vipi_num));
+
+void riscv_cpu_set_rdvipi_fn(CPURISCVState *env, uint64_t (*fn)(int vipi_num));
+
 #endif
 void riscv_cpu_set_mode(CPURISCVState *env, target_ulong newpriv);
 
@@ -365,6 +410,8 @@ void riscv_cpu_set_fflags(CPURISCVState *env, target_ulong);
 #define TB_FLAGS_MMU_MASK   7
 #define TB_FLAGS_PRIV_MMU_MASK                3
 #define TB_FLAGS_PRIV_HYP_ACCESS_MASK   (1 << 2)
+/* TODO: find out available bits for HULVX */
+#define TB_FLAGS_PRIV_HU_ACCESS_MASK   (1 << 2)
 #define TB_FLAGS_MSTATUS_FS MSTATUS_FS
 
 typedef CPURISCVState CPUArchState;

@@ -38,6 +38,10 @@ typedef struct SiFiveCLINTState {
     uint32_t sip_base;
     uint32_t timecmp_base;
     uint32_t time_base;
+    uint32_t vtimecmp_base;
+    uint32_t vtimectl_base;
+    uint32_t vcpuid_base;
+    uint32_t vipi_base;
     uint32_t aperture_size;
     uint32_t timebase_freq;
 } SiFiveCLINTState;
@@ -47,10 +51,20 @@ DeviceState *sifive_clint_create(hwaddr addr, hwaddr size,
     uint32_t timecmp_base, uint32_t time_base, uint32_t timebase_freq,
     bool provide_rdtime);
 
+DeviceState *sifive_duvisor_clint_create(hwaddr addr, hwaddr size,
+    uint32_t hartid_base, uint32_t num_harts, uint32_t sip_base,
+    uint32_t timecmp_base, uint32_t time_base, uint32_t vtimecmp_base, uint32_t vtimectl_base, uint32_t vipi_base, uint32_t vcpuid_base, 
+    uint32_t timebase_freq,
+    bool provide_rdtime);
+
 enum {
     SIFIVE_SIP_BASE     = 0x0,
     SIFIVE_TIMECMP_BASE = 0x4000,
-    SIFIVE_TIME_BASE    = 0xBFF8
+    SIFIVE_VIPI_BASE = 0x15000,
+    SIFIVE_VCPUID_BASE = 0x15800,
+    SIFIVE_TIME_BASE    = 0xBFF8,
+    SIFIVE_VTIMECMP_BASE = 0x10000,
+    SIFIVE_VTIMECTL_BASE    = 0x10800
 };
 
 enum {

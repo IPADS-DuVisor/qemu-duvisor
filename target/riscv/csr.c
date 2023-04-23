@@ -75,54 +75,58 @@ static int ctr(CPURISCVState *env, int csrno)
         /* The Counters extensions is not enabled */
         return -RISCV_EXCP_ILLEGAL_INST;
     }
-
+#ifdef HU_EXT
+    uint64_t counteren = env->hucounteren;
+#else
+    uint64_t counteren = env->hcounteren;
+#endif
     if (riscv_cpu_virt_enabled(env)) {
         switch (csrno) {
         case CSR_CYCLE:
-            if (!get_field(env->hcounteren, HCOUNTEREN_CY) &&
+            if (!get_field(counteren, HCOUNTEREN_CY) &&
                 get_field(env->mcounteren, HCOUNTEREN_CY)) {
                 return -RISCV_EXCP_VIRT_INSTRUCTION_FAULT;
             }
             break;
         case CSR_TIME:
-            if (!get_field(env->hcounteren, HCOUNTEREN_TM) &&
+            if (!get_field(counteren, HCOUNTEREN_TM) &&
                 get_field(env->mcounteren, HCOUNTEREN_TM)) {
                 return -RISCV_EXCP_VIRT_INSTRUCTION_FAULT;
             }
             break;
         case CSR_INSTRET:
-            if (!get_field(env->hcounteren, HCOUNTEREN_IR) &&
+            if (!get_field(counteren, HCOUNTEREN_IR) &&
                 get_field(env->mcounteren, HCOUNTEREN_IR)) {
                 return -RISCV_EXCP_VIRT_INSTRUCTION_FAULT;
             }
             break;
         case CSR_HPMCOUNTER3...CSR_HPMCOUNTER31:
-            if (!get_field(env->hcounteren, 1 << (csrno - CSR_HPMCOUNTER3)) &&
+            if (!get_field(counteren, 1 << (csrno - CSR_HPMCOUNTER3)) &&
                 get_field(env->mcounteren, 1 << (csrno - CSR_HPMCOUNTER3))) {
                 return -RISCV_EXCP_VIRT_INSTRUCTION_FAULT;
             }
             break;
 #if defined(TARGET_RISCV32)
         case CSR_CYCLEH:
-            if (!get_field(env->hcounteren, HCOUNTEREN_CY) &&
+            if (!get_field(counteren, HCOUNTEREN_CY) &&
                 get_field(env->mcounteren, HCOUNTEREN_CY)) {
                 return -RISCV_EXCP_VIRT_INSTRUCTION_FAULT;
             }
             break;
         case CSR_TIMEH:
-            if (!get_field(env->hcounteren, HCOUNTEREN_TM) &&
+            if (!get_field(counteren, HCOUNTEREN_TM) &&
                 get_field(env->mcounteren, HCOUNTEREN_TM)) {
                 return -RISCV_EXCP_VIRT_INSTRUCTION_FAULT;
             }
             break;
         case CSR_INSTRETH:
-            if (!get_field(env->hcounteren, HCOUNTEREN_IR) &&
+            if (!get_field(counteren, HCOUNTEREN_IR) &&
                 get_field(env->mcounteren, HCOUNTEREN_IR)) {
                 return -RISCV_EXCP_VIRT_INSTRUCTION_FAULT;
             }
             break;
         case CSR_HPMCOUNTER3H...CSR_HPMCOUNTER31H:
-            if (!get_field(env->hcounteren, 1 << (csrno - CSR_HPMCOUNTER3H)) &&
+            if (!get_field(counteren, 1 << (csrno - CSR_HPMCOUNTER3H)) &&
                 get_field(env->mcounteren, 1 << (csrno - CSR_HPMCOUNTER3H))) {
                 return -RISCV_EXCP_VIRT_INSTRUCTION_FAULT;
             }
@@ -153,6 +157,27 @@ static int hmode(CPURISCVState *env, int csrno)
         if ((env->priv == PRV_S && !riscv_cpu_virt_enabled(env)) ||
             env->priv == PRV_M) {
             return 0;
+        } else {
+            return -RISCV_EXCP_VIRT_INSTRUCTION_FAULT;
+        }
+    }
+
+    return -RISCV_EXCP_ILLEGAL_INST;
+}
+
+static int humode(CPURISCVState *env, int csrno)
+{
+    if (riscv_has_ext(env, RVS) &&
+        riscv_has_ext(env, RVH) &&
+        riscv_has_ext(env, RVZ)) {
+        /* Hypervisor extension is supported */
+        if ((env->priv == PRV_U && !riscv_cpu_virt_enabled(env) &&
+                    get_field(env->hstatus, HSTATUS_HU)) ||
+                (env->priv == PRV_S && !riscv_cpu_virt_enabled(env)) ||
+                env->priv == PRV_M) {
+            return 0;
+        } else if (env->priv == PRV_U && !riscv_cpu_virt_enabled(env)) {
+            return -RISCV_EXCP_ILLEGAL_INST;
         } else {
             return -RISCV_EXCP_VIRT_INSTRUCTION_FAULT;
         }
@@ -345,8 +370,11 @@ static int read_timeh(CPURISCVState *env, int csrno, target_ulong *val)
 
 static int read_time(CPURISCVState *env, int csrno, target_ulong *val)
 {
+#ifdef HU_EXT
+    uint64_t delta = riscv_cpu_virt_enabled(env) ? env->hutimedelta : 0;
+#else
     uint64_t delta = riscv_cpu_virt_enabled(env) ? env->htimedelta : 0;
-
+#endif
     if (!env->rdtime_fn) {
         return -RISCV_EXCP_ILLEGAL_INST;
     }
@@ -355,10 +383,115 @@ static int read_time(CPURISCVState *env, int csrno, target_ulong *val)
     return 0;
 }
 
+static int read_vtimecmp(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->vtimecmp;
+    return 0;    
+}
+
+static int read_vtimectl(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->vtimectl;
+    return 0;    
+}
+
+static int read_vcpuid(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->vcpuid;
+    return 0;    
+}
+
+static int read_vipi0(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->rdvipi_fn(0);
+    return 0;    
+}
+
+static int read_vipi1(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->rdvipi_fn(1);
+    return 0;    
+}
+
+static int read_vipi2(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->rdvipi_fn(2);
+    return 0;    
+}
+
+static int read_vipi3(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->rdvipi_fn(3);
+    return 0;
+}
+
+#if defined(TARGET_RISCV32)
+static int read_vtimecmph(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->vtimecmp >> 32;
+    return 0;    
+}
+#endif
+
+static int write_vtimecmp(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->vtimecmp = val;
+    env->vtimecmp_fn(env->vtimecmp_fn_arg, env);
+    return 0;    
+}
+
+static int write_vcpuid(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->vcpuid = val & 0xff;
+    env->wrvcpuid_fn(env);
+    return 0;    
+}
+
+static int write_vipi0(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->wrvipi_fn(val, 0);
+    return 0;    
+}
+
+static int write_vipi1(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->wrvipi_fn(val, 1);
+    return 0;    
+}
+static int write_vipi2(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->wrvipi_fn(val, 2);
+    return 0;    
+}
+static int write_vipi3(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->wrvipi_fn(val, 3);
+    return 0;    
+}
+
+static int write_vtimectl(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->vtimectl = val;
+    return 0;    
+}
+
+#if defined(TARGET_RISCV32)
+static int write_vtimecmph(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->vtimecmp = val << 32 | (env->vtimecmp & 0xffffffff);
+    env->vtimecmp_fn(env->vtimecmp_fn_arg, env);
+    return 0;
+}
+#endif
+
 #if defined(TARGET_RISCV32)
 static int read_timeh(CPURISCVState *env, int csrno, target_ulong *val)
 {
+#ifdef HU_EXT
+    uint64_t delta = riscv_cpu_virt_enabled(env) ? env->hutimedelta : 0;
+#else
     uint64_t delta = riscv_cpu_virt_enabled(env) ? env->htimedelta : 0;
+#endif
 
     if (!env->rdtime_fn) {
         return -RISCV_EXCP_ILLEGAL_INST;
@@ -374,11 +507,12 @@ static int read_timeh(CPURISCVState *env, int csrno, target_ulong *val)
 #define M_MODE_INTERRUPTS  (MIP_MSIP | MIP_MTIP | MIP_MEIP)
 #define S_MODE_INTERRUPTS  (MIP_SSIP | MIP_STIP | MIP_SEIP)
 #define VS_MODE_INTERRUPTS (MIP_VSSIP | MIP_VSTIP | MIP_VSEIP)
+#define HUVS_MODE_INTERRUPTS (MIP_USIP | MIP_UTIP | MIP_UEIP | MIP_UVTIP)
 
 static const target_ulong delegable_ints = S_MODE_INTERRUPTS |
-                                           VS_MODE_INTERRUPTS;
+                                           VS_MODE_INTERRUPTS | HUVS_MODE_INTERRUPTS;
 static const target_ulong all_ints = M_MODE_INTERRUPTS | S_MODE_INTERRUPTS |
-                                     VS_MODE_INTERRUPTS;
+                                     VS_MODE_INTERRUPTS | HUVS_MODE_INTERRUPTS;
 static const target_ulong delegable_excps =
     (1ULL << (RISCV_EXCP_INST_ADDR_MIS)) |
     (1ULL << (RISCV_EXCP_INST_ACCESS_FAULT)) |
@@ -389,6 +523,7 @@ static const target_ulong delegable_excps =
     (1ULL << (RISCV_EXCP_STORE_AMO_ADDR_MIS)) |
     (1ULL << (RISCV_EXCP_STORE_AMO_ACCESS_FAULT)) |
     (1ULL << (RISCV_EXCP_U_ECALL)) |
+    (1ULL << (RISCV_EXCP_VU_ECALL)) |
     (1ULL << (RISCV_EXCP_S_ECALL)) |
     (1ULL << (RISCV_EXCP_VS_ECALL)) |
     (1ULL << (RISCV_EXCP_M_ECALL)) |
@@ -403,7 +538,17 @@ static const target_ulong sstatus_v1_10_mask = SSTATUS_SIE | SSTATUS_SPIE |
     SSTATUS_UIE | SSTATUS_UPIE | SSTATUS_SPP | SSTATUS_FS | SSTATUS_XS |
     SSTATUS_SUM | SSTATUS_MXR | SSTATUS_SD;
 static const target_ulong sip_writable_mask = SIP_SSIP | MIP_USIP | MIP_UEIP;
+
+
+#if 0
 static const target_ulong hip_writable_mask = MIP_VSSIP | MIP_VSTIP | MIP_VSEIP;
+//static const target_ulong hvip_writable_mask = MIP_VSSIP | MIP_VSTIP | MIP_VSEIP;
+#else
+static const target_ulong hip_writable_mask = MIP_VSSIP;
+static const target_ulong hvip_writable_mask = MIP_VSSIP | MIP_VSTIP;
+#endif
+
+static const target_ulong huip_writable_mask = MIP_USIP | MIP_UTIP | MIP_UEIP | MIP_VSSIP | MIP_VSTIP | MIP_VSEIP | MIP_UVTIP;
 static const target_ulong vsip_writable_mask = MIP_VSSIP;
 
 #if defined(TARGET_RISCV32)
@@ -508,7 +653,9 @@ static int read_misa(CPURISCVState *env, int csrno, target_ulong *val)
 static int write_misa(CPURISCVState *env, int csrno, target_ulong val)
 {
     if (!riscv_feature(env, RISCV_FEATURE_MISA)) {
-        /* drop write to misa */
+        /* allow all writes to misa */
+        /* TODO: this should be fix later by using cli to pass enabled misa feature */
+        env->misa = val;
         return 0;
     }
 
@@ -750,7 +897,8 @@ static int write_sie(CPURISCVState *env, int csrno, target_ulong val)
         newval = (env->mie & ~VS_MODE_INTERRUPTS) |
                  ((val << 1) & VS_MODE_INTERRUPTS);
     } else {
-        newval = (env->mie & ~S_MODE_INTERRUPTS) | (val & S_MODE_INTERRUPTS);
+        // now sie should write both HUVS_MODE_INTERRUPTS, S_MODE_INTERRUPTS
+        newval = (env->mie & ~(S_MODE_INTERRUPTS | HUVS_MODE_INTERRUPTS)) | (val & (S_MODE_INTERRUPTS | HUVS_MODE_INTERRUPTS));
     }
 
     return write_mie(env, CSR_MIE, newval);
@@ -769,6 +917,23 @@ static int write_stvec(CPURISCVState *env, int csrno, target_ulong val)
         env->stvec = val;
     } else {
         qemu_log_mask(LOG_UNIMP, "CSR_STVEC: reserved mode not supported\n");
+    }
+    return 0;
+}
+
+static int read_utvec(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->utvec;
+    return 0;
+}
+
+static int write_utvec(CPURISCVState *env, int csrno, target_ulong val)
+{
+    /* bits [1:0] encode mode; 0 = direct, 1 = vectored, 2 >= reserved */
+    if ((val & 3) < 2) {
+        env->utvec = val;
+    } else {
+        qemu_log_mask(LOG_UNIMP, "CSR_UTVEC: reserved mode not supported\n");
     }
     return 0;
 }
@@ -798,6 +963,18 @@ static int write_sscratch(CPURISCVState *env, int csrno, target_ulong val)
     return 0;
 }
 
+static int read_uscratch(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->uscratch;
+    return 0;
+}
+
+static int write_uscratch(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->uscratch = val;
+    return 0;
+}
+
 static int read_sepc(CPURISCVState *env, int csrno, target_ulong *val)
 {
     *val = env->sepc;
@@ -810,6 +987,18 @@ static int write_sepc(CPURISCVState *env, int csrno, target_ulong val)
     return 0;
 }
 
+static int read_uepc(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->uepc;
+    return 0;
+}
+
+static int write_uepc(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->uepc = val;
+    return 0;
+}
+
 static int read_scause(CPURISCVState *env, int csrno, target_ulong *val)
 {
     *val = env->scause;
@@ -819,6 +1008,30 @@ static int read_scause(CPURISCVState *env, int csrno, target_ulong *val)
 static int write_scause(CPURISCVState *env, int csrno, target_ulong val)
 {
     env->scause = val;
+    return 0;
+}
+
+static int read_ucause(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->ucause;
+    return 0;
+}
+
+static int write_ucause(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->ucause = val;
+    return 0;
+}
+
+static int read_utval(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->utval;
+    return 0;
+}
+
+static int write_utval(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->utval = val;
     return 0;
 }
 
@@ -843,8 +1056,8 @@ static int rmw_sip(CPURISCVState *env, int csrno, target_ulong *ret_value,
         /* Shift the new values to line up with the VS bits */
         ret = rmw_mip(env, CSR_MSTATUS, ret_value, new_value << 1,
                       (write_mask & sip_writable_mask) << 1 & env->mideleg);
-        ret &= vsip_writable_mask;
-        ret >>= 1;
+        *ret_value &= hip_writable_mask;
+        *ret_value >>= 1;
     } else {
         ret = rmw_mip(env, CSR_MSTATUS, ret_value, new_value,
                       write_mask & env->mideleg & sip_writable_mask);
@@ -891,6 +1104,31 @@ static int write_satp(CPURISCVState *env, int csrno, target_ulong val)
     return 0;
 }
 
+static int read_sideleg(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->sideleg;
+    return 0;
+}
+
+static int write_sideleg(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->sideleg = val;
+    return 0;
+}
+
+static int read_sedeleg(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->sedeleg;
+    return 0;
+}
+
+static int write_sedeleg(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->sedeleg = val;
+    return 0;
+}
+
+
 /* Hypervisor Extensions */
 static int read_hstatus(CPURISCVState *env, int csrno, target_ulong *val)
 {
@@ -913,6 +1151,32 @@ static int write_hstatus(CPURISCVState *env, int csrno, target_ulong val)
     }
 #endif
     if (get_field(val, HSTATUS_VSBE) != 0) {
+        qemu_log_mask(LOG_UNIMP, "QEMU does not support big endian guests.");
+    }
+    return 0;
+}
+
+static int read_hustatus(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->hustatus;
+#ifdef TARGET_RISCV64
+    /* We only support 64-bit VSXL */
+    *val = set_field(*val, HUSTATUS_VSXL, 2);
+#endif
+    /* We only support little endian */
+    *val = set_field(*val, HUSTATUS_VSBE, 0);
+    return 0;
+}
+
+static int write_hustatus(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->hustatus = val;
+#ifdef TARGET_RISCV64
+    if (get_field(val, HUSTATUS_VSXL) != 2) {
+        qemu_log_mask(LOG_UNIMP, "QEMU does not support mixed HSXLEN options.");
+    }
+#endif
+    if (get_field(val, HUSTATUS_VSBE) != 0) {
         qemu_log_mask(LOG_UNIMP, "QEMU does not support big endian guests.");
     }
     return 0;
@@ -942,13 +1206,32 @@ static int write_hideleg(CPURISCVState *env, int csrno, target_ulong val)
     return 0;
 }
 
+
 static int rmw_hvip(CPURISCVState *env, int csrno, target_ulong *ret_value,
                    target_ulong new_value, target_ulong write_mask)
 {
+#if 1
+    int ret = rmw_mip(env, 0, ret_value, new_value,
+                      write_mask & hvip_writable_mask);
+
+    *ret_value &= hvip_writable_mask;
+#else
     int ret = rmw_mip(env, 0, ret_value, new_value,
                       write_mask & hip_writable_mask);
 
     *ret_value &= hip_writable_mask;
+#endif
+
+    return ret;
+}
+
+static int rmw_huvip(CPURISCVState *env, int csrno, target_ulong *ret_value,
+                   target_ulong new_value, target_ulong write_mask)
+{
+    int ret = rmw_mip(env, 0, ret_value, new_value,
+                      write_mask & huip_writable_mask);
+
+    *ret_value &= huip_writable_mask;
 
     return ret;
 }
@@ -960,6 +1243,17 @@ static int rmw_hip(CPURISCVState *env, int csrno, target_ulong *ret_value,
                       write_mask & hip_writable_mask);
 
     *ret_value &= hip_writable_mask;
+
+    return ret;
+}
+
+static int rmw_huip(CPURISCVState *env, int csrno, target_ulong *ret_value,
+                   target_ulong new_value, target_ulong write_mask)
+{
+    int ret = rmw_mip(env, 0, ret_value, new_value,
+                      write_mask & huip_writable_mask & env->sideleg);
+
+    *ret_value &= huip_writable_mask;
 
     return ret;
 }
@@ -976,6 +1270,19 @@ static int write_hie(CPURISCVState *env, int csrno, target_ulong val)
     return write_mie(env, CSR_MIE, newval);
 }
 
+static int read_huie(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->mie & HUVS_MODE_INTERRUPTS;
+    return 0;
+}
+
+static int write_huie(CPURISCVState *env, int csrno, target_ulong val)
+{
+    target_ulong newval = (env->mie & ~HUVS_MODE_INTERRUPTS) | 
+        (val & (HUVS_MODE_INTERRUPTS | VS_MODE_INTERRUPTS));
+    return write_mie(env, CSR_MIE, newval);
+}
+
 static int read_hcounteren(CPURISCVState *env, int csrno, target_ulong *val)
 {
     *val = env->hcounteren;
@@ -985,6 +1292,18 @@ static int read_hcounteren(CPURISCVState *env, int csrno, target_ulong *val)
 static int write_hcounteren(CPURISCVState *env, int csrno, target_ulong val)
 {
     env->hcounteren = val;
+    return 0;
+}
+
+static int read_hucounteren(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->hucounteren;
+    return 0;
+}
+
+static int write_hucounteren(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->hucounteren = val;
     return 0;
 }
 
@@ -1012,6 +1331,18 @@ static int write_htval(CPURISCVState *env, int csrno, target_ulong val)
     return 0;
 }
 
+static int read_hutval(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->hutval;
+    return 0;
+}
+
+static int write_hutval(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->hutval = val;
+    return 0;
+}
+
 static int read_htinst(CPURISCVState *env, int csrno, target_ulong *val)
 {
     *val = env->htinst;
@@ -1019,6 +1350,17 @@ static int read_htinst(CPURISCVState *env, int csrno, target_ulong *val)
 }
 
 static int write_htinst(CPURISCVState *env, int csrno, target_ulong val)
+{
+    return 0;
+}
+
+static int read_hutinst(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->hutinst;
+    return 0;
+}
+
+static int write_hutinst(CPURISCVState *env, int csrno, target_ulong val)
 {
     return 0;
 }
@@ -1044,6 +1386,18 @@ static int read_hgatp(CPURISCVState *env, int csrno, target_ulong *val)
 static int write_hgatp(CPURISCVState *env, int csrno, target_ulong val)
 {
     env->hgatp = val;
+    return 0;
+}
+
+static int read_hugatp(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->hugatp;
+    return 0;
+}
+
+static int write_hugatp(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->hugatp = val;
     return 0;
 }
 
@@ -1075,6 +1429,34 @@ static int write_htimedelta(CPURISCVState *env, int csrno, target_ulong val)
     return 0;
 }
 
+static int read_hutimedelta(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    if (!env->rdtime_fn) {
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
+
+#if defined(TARGET_RISCV32)
+    *val = env->hutimedelta & 0xffffffff;
+#else
+    *val = env->hutimedelta;
+#endif
+    return 0;
+}
+
+static int write_hutimedelta(CPURISCVState *env, int csrno, target_ulong val)
+{
+    if (!env->rdtime_fn) {
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
+
+#if defined(TARGET_RISCV32)
+    env->hutimedelta = deposit64(env->hutimedelta, 0, 32, (uint64_t)val);
+#else
+    env->hutimedelta = val;
+#endif
+    return 0;
+}
+
 #if defined(TARGET_RISCV32)
 static int read_htimedeltah(CPURISCVState *env, int csrno, target_ulong *val)
 {
@@ -1093,6 +1475,28 @@ static int write_htimedeltah(CPURISCVState *env, int csrno, target_ulong val)
     }
 
     env->htimedelta = deposit64(env->htimedelta, 32, 32, (uint64_t)val);
+    return 0;
+}
+#endif
+
+#if defined(TARGET_RISCV32)
+static int read_hutimedeltah(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    if (!env->rdtime_fn) {
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    *val = env->hutimedelta >> 32;
+    return 0;
+}
+
+static int write_hutimedeltah(CPURISCVState *env, int csrno, target_ulong val)
+{
+    if (!env->rdtime_fn) {
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    env->hutimedelta = deposit64(env->hutimedelta, 32, 32, (uint64_t)val);
     return 0;
 }
 #endif
@@ -1121,13 +1525,27 @@ static int rmw_vsip(CPURISCVState *env, int csrno, target_ulong *ret_value,
 
 static int read_vsie(CPURISCVState *env, int csrno, target_ulong *val)
 {
-    *val = env->mie & env->mideleg & VS_MODE_INTERRUPTS;
+    *val = env->mie & env->hideleg;
+    return 0;
+}
+
+static int read_huvsie(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->mie & env->hideleg;
     return 0;
 }
 
 static int write_vsie(CPURISCVState *env, int csrno, target_ulong val)
 {
-    target_ulong newval = (env->mie & ~env->mideleg) | (val & env->mideleg & MIP_VSSIP);
+    target_ulong newval = (env->mie & ~env->hideleg) | 
+        (val & env->hideleg);
+    return write_mie(env, CSR_MIE, newval);
+}
+
+static int write_huvsie(CPURISCVState *env, int csrno, target_ulong val)
+{
+    target_ulong newval = (env->mie & ~env->hideleg) | 
+        (val & env->hideleg);
     return write_mie(env, CSR_MIE, newval);
 }
 
@@ -1386,6 +1804,18 @@ static riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_TIMEH] =               { ctr,  read_timeh                          },
 #endif
 
+    [CSR_VTIMECMP] =            { ctr,  read_vtimecmp,    write_vtimecmp    },
+    [CSR_VTIMECTL] =            { ctr,  read_vtimectl,    write_vtimectl    },
+
+    [CSR_VCPUID] =              { ctr,  read_vcpuid,      write_vcpuid      },
+    [CSR_VIPI0]  =              { ctr,  read_vipi0  ,      write_vipi0        },
+    [CSR_VIPI1]  =              { ctr,  read_vipi1  ,      write_vipi1        },
+    [CSR_VIPI2]  =              { ctr,  read_vipi2  ,      write_vipi2        },
+    [CSR_VIPI3]  =              { ctr,  read_vipi3  ,      write_vipi3        },
+#if defined(TARGET_RISCV32)
+    [CSR_VTIMECMPH] =           { ctr,  read_vtimecmph,   write_vtimecmph   },
+#endif
+
 #if !defined(CONFIG_USER_ONLY)
     /* Machine Timers and Counters */
     [CSR_MCYCLE] =              { any,  read_instret                        },
@@ -1436,6 +1866,9 @@ static riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_SBADADDR] =            { smode, read_sbadaddr,    write_sbadaddr    },
     [CSR_SIP] =                 { smode, NULL,     NULL,     rmw_sip         },
 
+    [CSR_SIDELEG] =             { any,   read_sideleg,     write_sideleg     },
+    [CSR_SEDELEG] =             { any,   read_sedeleg,     write_sedeleg     },
+
     /* Supervisor Protection and Translation */
     [CSR_SATP] =                { smode, read_satp,        write_satp        },
 
@@ -1455,6 +1888,27 @@ static riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
 #if defined(TARGET_RISCV32)
     [CSR_HTIMEDELTAH] =         { hmode,   read_htimedeltah, write_htimedeltah},
 #endif
+    
+    [CSR_UTVEC] =               { humode,   read_utvec,      write_utvec      },
+    [CSR_UEPC] =                { humode,   read_uepc,       write_uepc       },
+    [CSR_USCRATCH] =            { humode,   read_uscratch,   write_uscratch   },
+    [CSR_UCAUSE] =              { humode,   read_ucause,     write_ucause     },
+    [CSR_UTVAL] =               { humode,   read_utval,      write_utval      },
+    
+    [CSR_HUSTATUS] =            { humode,   read_hustatus,     write_hustatus    },
+    [CSR_HUVIP] =               { humode,   NULL,     NULL,     rmw_huvip        },
+    [CSR_HUIP] =                { humode,   NULL,     NULL,     rmw_huip         },
+    [CSR_HUIE] =                { humode,   read_huie,         write_huie        },
+    [CSR_HUCOUNTEREN] =         { humode,   read_hucounteren,  write_hucounteren },
+    [CSR_HUTVAL] =              { humode,   read_hutval,       write_hutval      },
+    [CSR_HUTINST] =             { humode,   read_hutinst,      write_hutinst     },
+    [CSR_HUGATP] =              { humode,   read_hugatp,       write_hugatp      },
+    [CSR_HUTIMEDELTA] =         { humode,   read_hutimedelta,  write_hutimedelta },
+#if defined(TARGET_RISCV32)
+    [CSR_HUTIMEDELTAH] =        { humode,   read_hutimedeltah, write_hutimedeltah},
+#endif
+    //[CSR_HGEIE] =               { hmode,   read_hgeie,       write_hgeie      },
+    //[CSR_HGEIP] =               { hmode,   read_hgeip,       write_hgeip      },
 
     [CSR_VSSTATUS] =            { hmode,   read_vsstatus,    write_vsstatus   },
     [CSR_VSIP] =                { hmode,   NULL,     NULL,     rmw_vsip       },
@@ -1465,6 +1919,16 @@ static riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_VSCAUSE] =             { hmode,   read_vscause,     write_vscause    },
     [CSR_VSTVAL] =              { hmode,   read_vstval,      write_vstval     },
     [CSR_VSATP] =               { hmode,   read_vsatp,       write_vsatp      },
+
+    [CSR_HUVSSTATUS] =            { any,   read_vsstatus,    write_vsstatus   },
+    [CSR_HUVSIP] =                { any,   NULL,     NULL,     rmw_vsip       },
+    [CSR_HUVSIE] =                { any,   read_huvsie,      write_huvsie     },
+    [CSR_HUVSTVEC] =              { any,   read_vstvec,      write_vstvec     },
+    [CSR_HUVSSCRATCH] =           { any,   read_vsscratch,   write_vsscratch  },
+    [CSR_HUVSEPC] =               { any,   read_vsepc,       write_vsepc      },
+    [CSR_HUVSCAUSE] =             { any,   read_vscause,     write_vscause    },
+    [CSR_HUVSTVAL] =              { any,   read_vstval,      write_vstval     },
+    [CSR_HUVSATP] =               { any,   read_vsatp,       write_vsatp      },
 
     [CSR_MTVAL2] =              { hmode,   read_mtval2,      write_mtval2     },
     [CSR_MTINST] =              { hmode,   read_mtinst,      write_mtinst     },

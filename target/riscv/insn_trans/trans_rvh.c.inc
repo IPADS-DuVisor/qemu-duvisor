@@ -334,3 +334,332 @@ static bool trans_hfence_vvma(DisasContext *ctx, arg_sfence_vma *a)
 #endif
     return false;
 }
+
+static bool trans_hufence_gvma(DisasContext *ctx, arg_sfence_vma *a)
+{
+    REQUIRE_EXT(ctx, RVH);
+#ifndef CONFIG_USER_ONLY
+    gen_helper_hu_gvma_tlb_flush(cpu_env);
+    return true;
+#endif
+    return false;
+}
+
+static bool trans_hufence_vvma(DisasContext *ctx, arg_sfence_vma *a)
+{
+    REQUIRE_EXT(ctx, RVH);
+#ifndef CONFIG_USER_ONLY
+    gen_helper_hu_tlb_flush(cpu_env);
+    return true;
+#endif
+    return false;
+}
+
+static bool trans_hulv_b(DisasContext *ctx, arg_hlv_b *a)
+{
+    REQUIRE_EXT(ctx, RVH);
+#ifndef CONFIG_USER_ONLY
+    TCGv t0 = tcg_temp_new();
+    TCGv t1 = tcg_temp_new();
+
+    check_access(ctx);
+
+    gen_get_gpr(t0, a->rs1);
+
+    tcg_gen_qemu_ld_tl(t1, t0, ctx->mem_idx | TB_FLAGS_PRIV_HU_ACCESS_MASK, MO_SB);
+    gen_set_gpr(a->rd, t1);
+
+    tcg_temp_free(t0);
+    tcg_temp_free(t1);
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool trans_hulv_h(DisasContext *ctx, arg_hlv_h *a)
+{
+    REQUIRE_EXT(ctx, RVH);
+#ifndef CONFIG_USER_ONLY
+    TCGv t0 = tcg_temp_new();
+    TCGv t1 = tcg_temp_new();
+
+    check_access(ctx);
+
+    gen_get_gpr(t0, a->rs1);
+
+    tcg_gen_qemu_ld_tl(t1, t0, ctx->mem_idx | TB_FLAGS_PRIV_HU_ACCESS_MASK, MO_TESW);
+    gen_set_gpr(a->rd, t1);
+
+    tcg_temp_free(t0);
+    tcg_temp_free(t1);
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool trans_hulv_w(DisasContext *ctx, arg_hlv_w *a)
+{
+    REQUIRE_EXT(ctx, RVH);
+#ifndef CONFIG_USER_ONLY
+    TCGv t0 = tcg_temp_new();
+    TCGv t1 = tcg_temp_new();
+
+    check_access(ctx);
+
+    gen_get_gpr(t0, a->rs1);
+
+    tcg_gen_qemu_ld_tl(t1, t0, ctx->mem_idx | TB_FLAGS_PRIV_HU_ACCESS_MASK, MO_TESL);
+    gen_set_gpr(a->rd, t1);
+
+    tcg_temp_free(t0);
+    tcg_temp_free(t1);
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool trans_hulv_bu(DisasContext *ctx, arg_hlv_bu *a)
+{
+    REQUIRE_EXT(ctx, RVH);
+#ifndef CONFIG_USER_ONLY
+    TCGv t0 = tcg_temp_new();
+    TCGv t1 = tcg_temp_new();
+
+    check_access(ctx);
+
+    gen_get_gpr(t0, a->rs1);
+
+    tcg_gen_qemu_ld_tl(t1, t0, ctx->mem_idx | TB_FLAGS_PRIV_HU_ACCESS_MASK, MO_UB);
+    gen_set_gpr(a->rd, t1);
+
+    tcg_temp_free(t0);
+    tcg_temp_free(t1);
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool trans_hulv_hu(DisasContext *ctx, arg_hlv_hu *a)
+{
+    REQUIRE_EXT(ctx, RVH);
+#ifndef CONFIG_USER_ONLY
+    TCGv t0 = tcg_temp_new();
+    TCGv t1 = tcg_temp_new();
+
+    check_access(ctx);
+
+    gen_get_gpr(t0, a->rs1);
+    tcg_gen_qemu_ld_tl(t1, t0, ctx->mem_idx | TB_FLAGS_PRIV_HU_ACCESS_MASK, MO_TEUW);
+    gen_set_gpr(a->rd, t1);
+
+    tcg_temp_free(t0);
+    tcg_temp_free(t1);
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool trans_husv_b(DisasContext *ctx, arg_hsv_b *a)
+{
+    REQUIRE_EXT(ctx, RVH);
+#ifndef CONFIG_USER_ONLY
+    TCGv t0 = tcg_temp_new();
+    TCGv dat = tcg_temp_new();
+
+    check_access(ctx);
+
+    gen_get_gpr(t0, a->rs1);
+    gen_get_gpr(dat, a->rs2);
+
+    tcg_gen_qemu_st_tl(dat, t0, ctx->mem_idx | TB_FLAGS_PRIV_HU_ACCESS_MASK, MO_SB);
+
+    tcg_temp_free(t0);
+    tcg_temp_free(dat);
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool trans_husv_h(DisasContext *ctx, arg_hsv_h *a)
+{
+    REQUIRE_EXT(ctx, RVH);
+#ifndef CONFIG_USER_ONLY
+    TCGv t0 = tcg_temp_new();
+    TCGv dat = tcg_temp_new();
+
+    check_access(ctx);
+
+    gen_get_gpr(t0, a->rs1);
+    gen_get_gpr(dat, a->rs2);
+
+    tcg_gen_qemu_st_tl(dat, t0, ctx->mem_idx | TB_FLAGS_PRIV_HU_ACCESS_MASK, MO_TESW);
+
+    tcg_temp_free(t0);
+    tcg_temp_free(dat);
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool trans_husv_w(DisasContext *ctx, arg_hsv_w *a)
+{
+    REQUIRE_EXT(ctx, RVH);
+#ifndef CONFIG_USER_ONLY
+    TCGv t0 = tcg_temp_new();
+    TCGv dat = tcg_temp_new();
+
+    check_access(ctx);
+
+    gen_get_gpr(t0, a->rs1);
+    gen_get_gpr(dat, a->rs2);
+
+    tcg_gen_qemu_st_tl(dat, t0, ctx->mem_idx | TB_FLAGS_PRIV_HU_ACCESS_MASK, MO_TESL);
+
+    tcg_temp_free(t0);
+    tcg_temp_free(dat);
+    return true;
+#else
+    return false;
+#endif
+}
+
+#ifdef TARGET_RISCV64
+static bool trans_hulv_wu(DisasContext *ctx, arg_hlv_wu *a)
+{
+    REQUIRE_EXT(ctx, RVH);
+#ifndef CONFIG_USER_ONLY
+    TCGv t0 = tcg_temp_new();
+    TCGv t1 = tcg_temp_new();
+
+    check_access(ctx);
+
+    gen_get_gpr(t0, a->rs1);
+
+    tcg_gen_qemu_ld_tl(t1, t0, ctx->mem_idx | TB_FLAGS_PRIV_HU_ACCESS_MASK, MO_TEUL);
+    gen_set_gpr(a->rd, t1);
+
+    tcg_temp_free(t0);
+    tcg_temp_free(t1);
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool trans_hulv_d(DisasContext *ctx, arg_hlv_d *a)
+{
+    REQUIRE_EXT(ctx, RVH);
+#ifndef CONFIG_USER_ONLY
+    TCGv t0 = tcg_temp_new();
+    TCGv t1 = tcg_temp_new();
+
+    check_access(ctx);
+
+    gen_get_gpr(t0, a->rs1);
+
+    tcg_gen_qemu_ld_tl(t1, t0, ctx->mem_idx | TB_FLAGS_PRIV_HU_ACCESS_MASK, MO_TEQ);
+    gen_set_gpr(a->rd, t1);
+
+    tcg_temp_free(t0);
+    tcg_temp_free(t1);
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool trans_husv_d(DisasContext *ctx, arg_hsv_d *a)
+{
+    REQUIRE_EXT(ctx, RVH);
+#ifndef CONFIG_USER_ONLY
+    TCGv t0 = tcg_temp_new();
+    TCGv dat = tcg_temp_new();
+
+    check_access(ctx);
+
+    gen_get_gpr(t0, a->rs1);
+    gen_get_gpr(dat, a->rs2);
+
+    tcg_gen_qemu_st_tl(dat, t0, ctx->mem_idx | TB_FLAGS_PRIV_HU_ACCESS_MASK, MO_TEQ);
+
+    tcg_temp_free(t0);
+    tcg_temp_free(dat);
+    return true;
+#else
+    return false;
+#endif
+}
+#endif
+
+static bool trans_hulvx_hu(DisasContext *ctx, arg_hlvx_hu *a)
+{
+    REQUIRE_EXT(ctx, RVH);
+#ifndef CONFIG_USER_ONLY
+    TCGv t0 = tcg_temp_new();
+    TCGv t1 = tcg_temp_new();
+
+    check_access(ctx);
+
+    gen_get_gpr(t0, a->rs1);
+
+    gen_helper_hyp_hlvx_hu(t1, cpu_env, t0);
+    gen_set_gpr(a->rd, t1);
+
+    tcg_temp_free(t0);
+    tcg_temp_free(t1);
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool trans_hulvx_wu(DisasContext *ctx, arg_hlvx_wu *a)
+{
+    REQUIRE_EXT(ctx, RVH);
+#ifndef CONFIG_USER_ONLY
+    TCGv t0 = tcg_temp_new();
+    TCGv t1 = tcg_temp_new();
+
+    check_access(ctx);
+
+    gen_get_gpr(t0, a->rs1);
+
+    gen_helper_hyp_hlvx_wu(t1, cpu_env, t0);
+    gen_set_gpr(a->rd, t1);
+
+    tcg_temp_free(t0);
+    tcg_temp_free(t1);
+    return true;
+#else
+    return false;
+#endif
+}
+
+
+static bool trans_huret(DisasContext *ctx, arg_huret *a)
+{
+#ifndef CONFIG_USER_ONLY
+    tcg_gen_movi_tl(cpu_pc, ctx->base.pc_next);
+
+    if (has_ext(ctx, RVH)) {
+        
+        check_access(ctx);
+
+        gen_helper_huret(cpu_pc, cpu_env, cpu_pc);
+        exit_tb(ctx); /* no chaining */
+        ctx->base.is_jmp = DISAS_NORETURN;
+    } else {
+        return false;
+    }
+    return true;
+#else
+    return false;
+#endif
+}

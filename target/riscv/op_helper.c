@@ -93,12 +93,17 @@ target_ulong helper_sret(CPURISCVState *env, target_ulong cpu_pc_deb)
     if (get_field(env->mstatus, MSTATUS_TSR) && !(env->priv >= PRV_M)) {
         riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
     }
-
+#ifdef HU_EXT
+    if (riscv_has_ext(env, RVZ) && riscv_cpu_virt_enabled(env) &&
+        get_field(env->hustatus, HUSTATUS_VTSR)) {
+        riscv_raise_exception(env, RISCV_EXCP_VIRT_INSTRUCTION_FAULT, GETPC());
+    }
+#else
     if (riscv_has_ext(env, RVH) && riscv_cpu_virt_enabled(env) &&
         get_field(env->hstatus, HSTATUS_VTSR)) {
         riscv_raise_exception(env, RISCV_EXCP_VIRT_INSTRUCTION_FAULT, GETPC());
     }
-
+#endif
     mstatus = env->mstatus;
 
     if (riscv_has_ext(env, RVH) && !riscv_cpu_virt_enabled(env)) {
@@ -130,6 +135,52 @@ target_ulong helper_sret(CPURISCVState *env, target_ulong cpu_pc_deb)
         mstatus = set_field(mstatus, MSTATUS_SPIE, 1);
         mstatus = set_field(mstatus, MSTATUS_SPP, PRV_U);
         env->mstatus = mstatus;
+    }
+
+    riscv_cpu_set_mode(env, prev_priv);
+
+    return retpc;
+}
+
+target_ulong helper_huret(CPURISCVState *env, target_ulong cpu_pc_deb)
+{
+    uint64_t hustatus = env->hustatus;
+    target_ulong prev_priv, prev_virt;
+
+    if ( env->priv != PRV_U ) {
+        riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+    }
+
+    target_ulong retpc = env->uepc;
+    if (!riscv_has_ext(env, RVC) && (retpc & 0x3)) {
+        riscv_raise_exception(env, RISCV_EXCP_INST_ADDR_MIS, GETPC());
+    }
+
+    if (riscv_has_ext(env, RVZ) && riscv_cpu_virt_enabled(env)) {
+        riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+    }
+
+    if (riscv_has_ext(env, RVZ) && !riscv_cpu_virt_enabled(env)) {
+        /* We support Hypervisor extensions and virtulisation is disabled */
+
+        prev_priv = get_field(hustatus, HUSTATUS_UPVP);
+        prev_virt = get_field(hustatus, HUSTATUS_UPV);
+
+        hustatus = set_field(hustatus, HUSTATUS_UPV, 0);
+        hustatus = set_field(hustatus, HUSTATUS_UPVP, 0);
+        hustatus = set_field(hustatus, HUSTATUS_UIE,
+                            get_field(hustatus, HUSTATUS_UPIE));
+        hustatus = set_field(hustatus, HUSTATUS_UPIE, 1);
+
+        env->hustatus = hustatus;
+
+        if (prev_virt) {
+            riscv_cpu_swap_hypervisor_regs(env);
+        }
+
+        riscv_cpu_set_virt_enabled(env, prev_virt);
+    } else {
+        riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
     }
 
     riscv_cpu_set_mode(env, prev_priv);
@@ -193,7 +244,11 @@ void helper_tlb_flush(CPURISCVState *env)
          get_field(env->mstatus, MSTATUS_TVM))) {
         riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
     } else if (riscv_has_ext(env, RVH) && riscv_cpu_virt_enabled(env) &&
+#ifdef HU_EXT
+               riscv_has_ext(env, RVZ) && get_field(env->hustatus, HUSTATUS_VTVM)) {
+#else
                get_field(env->hstatus, HSTATUS_VTVM)) {
+#endif
         riscv_raise_exception(env, RISCV_EXCP_VIRT_INSTRUCTION_FAULT, GETPC());
     } else {
         tlb_flush(cs);
@@ -217,6 +272,24 @@ void helper_hyp_tlb_flush(CPURISCVState *env)
     riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
 }
 
+void helper_hu_tlb_flush(CPURISCVState *env)
+{
+    CPUState *cs = env_cpu(env);
+
+    /* Nested virtualization is not supported */
+    if (riscv_cpu_virt_enabled(env)) {
+        riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+    }
+
+    /* Only available in HU-mode */
+    if (env->priv == PRV_U) {
+        tlb_flush(cs);
+        return;
+    }
+
+    riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+}
+
 void helper_hyp_gvma_tlb_flush(CPURISCVState *env)
 {
     if (env->priv == PRV_S && !riscv_cpu_virt_enabled(env) &&
@@ -225,6 +298,16 @@ void helper_hyp_gvma_tlb_flush(CPURISCVState *env)
     }
 
     helper_hyp_tlb_flush(env);
+}
+
+void helper_hu_gvma_tlb_flush(CPURISCVState *env)
+{
+    if (env->priv == PRV_U && !riscv_cpu_virt_enabled(env) &&
+        get_field(env->mstatus, MSTATUS_TVM)) {
+        riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+    }
+
+    helper_hu_tlb_flush(env);
 }
 
 target_ulong helper_hyp_hlvx_hu(CPURISCVState *env, target_ulong address)

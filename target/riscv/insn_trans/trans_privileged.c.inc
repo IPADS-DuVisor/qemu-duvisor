@@ -35,11 +35,6 @@ static bool trans_ebreak(DisasContext *ctx, arg_ebreak *a)
     return true;
 }
 
-static bool trans_uret(DisasContext *ctx, arg_uret *a)
-{
-    return false;
-}
-
 static bool trans_sret(DisasContext *ctx, arg_sret *a)
 {
 #ifndef CONFIG_USER_ONLY

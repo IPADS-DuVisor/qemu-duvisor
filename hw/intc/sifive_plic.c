@@ -34,6 +34,13 @@
 
 #define RISCV_DEBUG_PLIC 0
 
+#define VINTERRUPTS_BASE 0x1f00000
+#define VINTERRUPTS_IRQ_OFFSET 0x80
+static uint64_t vinterrupts = 0;
+// static uint32_t requests[0x100], claims[0x100];
+
+// QemuMutex vplic_mutex;
+
 static PLICMode char_to_mode(char c)
 {
     switch (c) {
@@ -109,6 +116,11 @@ static void sifive_plic_set_pending(SiFivePLICState *plic, int irq, bool level)
 static void sifive_plic_set_claimed(SiFivePLICState *plic, int irq, bool level)
 {
     atomic_set_masked(&plic->claimed[irq >> 5], 1 << (irq & 31), -!!level);
+    if (!level && irq >= VINTERRUPTS_IRQ_OFFSET) {
+        //vinterrupts &= ~(1 << (irq - 0x80));
+        qatomic_and(&vinterrupts, ~(1 << (irq - VINTERRUPTS_IRQ_OFFSET)));
+        // qatomic_add(&claims[irq], 1);
+    }
 }
 
 static int sifive_plic_irqs_pending(SiFivePLICState *plic, uint32_t addrid)
@@ -133,6 +145,8 @@ static int sifive_plic_irqs_pending(SiFivePLICState *plic, uint32_t addrid)
     return 0;
 }
 
+static int debug_flag = 0;
+
 static void sifive_plic_update(SiFivePLICState *plic)
 {
     int addrid;
@@ -152,12 +166,27 @@ static void sifive_plic_update(SiFivePLICState *plic)
             riscv_cpu_update_mip(RISCV_CPU(cpu), MIP_MEIP, BOOL_TO_MASK(level));
             break;
         case PLICMode_S:
+            /* if (debug_flag)
+                level = 0; */
             riscv_cpu_update_mip(RISCV_CPU(cpu), MIP_SEIP, BOOL_TO_MASK(level));
+            break;
+        case PLICMode_H:
+            /* if (debug_flag)
+                level = 1; */
+            riscv_cpu_update_mip(RISCV_CPU(cpu), MIP_VSEIP, BOOL_TO_MASK(level));
             break;
         default:
             break;
         }
+
+        if (debug_flag) {
+            //printf("env->mip: 0x%lx, env->mie: 0x%lx, mode: %d\n", env->mip, env->mie, mode);
+            //printf("level: 0x%x, addrid: %d\n", level, addrid);
+            //debug_flag = 0;
+        }
     }
+
+    debug_flag = 0;
 
     if (RISCV_DEBUG_PLIC) {
         sifive_plic_print_state(plic);
@@ -195,6 +224,7 @@ static uint32_t sifive_plic_claim(SiFivePLICState *plic, uint32_t addrid)
     return max_irq;
 }
 
+
 static uint64_t sifive_plic_read(void *opaque, hwaddr addr, unsigned size)
 {
     SiFivePLICState *plic = opaque;
@@ -202,6 +232,16 @@ static uint64_t sifive_plic_read(void *opaque, hwaddr addr, unsigned size)
     /* writes must be 4 byte words */
     if ((addr & 0x3) != 0) {
         goto err;
+    }
+
+    if ((addr == 0x1f00000) || ((addr >= 0x202000) && (addr <= 0x203000)) || ((addr >= 0x205000) && (addr <= 0x206000))) {
+        //printf("**************------------**********\n");
+        //printf("**************------------**********\n");
+        //printf("**************------------**********\n");
+        //printf("sifive_plic_read addr: 0x%lx\n", addr);
+        //printf("**************------------**********\n");
+        //printf("**************------------**********\n");
+        //printf("**************------------**********\n");
     }
 
     if (addr >= plic->priority_base && /* 4 bytes per source */
@@ -250,6 +290,7 @@ static uint64_t sifive_plic_read(void *opaque, hwaddr addr, unsigned size)
             }
             return plic->target_priority[addrid];
         } else if (contextid == 4) {
+            // qemu_mutex_lock(&vplic_mutex);
             uint32_t value = sifive_plic_claim(plic, addrid);
             if (RISCV_DEBUG_PLIC) {
                 qemu_log("plic: read claim: hart%d-%c irq=%x\n",
@@ -258,8 +299,12 @@ static uint64_t sifive_plic_read(void *opaque, hwaddr addr, unsigned size)
                     value);
             }
             sifive_plic_update(plic);
+            // qemu_mutex_unlock(&vplic_mutex);
             return value;
         }
+    } else if (addr >= VINTERRUPTS_BASE && addr < VINTERRUPTS_BASE + 0x8) {
+        //return vinterrupts;
+        return qatomic_read(&vinterrupts);
     }
 
 err:
@@ -277,6 +322,16 @@ static void sifive_plic_write(void *opaque, hwaddr addr, uint64_t value,
     /* writes must be 4 byte words */
     if ((addr & 0x3) != 0) {
         goto err;
+    }
+
+    if ((addr == 0x1f00000) || ((addr >= 0x202000) && (addr <= 0x203000)) || ((addr >= 0x205000) && (addr <= 0x206000))) {
+        //printf("**************------------**********\n");
+        //printf("**************------------**********\n");
+        //printf("**************------------**********\n");
+        //printf("sifive_plic_write addr: 0x%lx, value: 0x%lx\n", addr, value);
+        //printf("**************------------**********\n");
+        //printf("**************------------**********\n");
+        //printf("**************------------**********\n");
     }
 
     if (addr >= plic->priority_base && /* 4 bytes per source */
@@ -341,6 +396,38 @@ static void sifive_plic_write(void *opaque, hwaddr addr, uint64_t value,
                 sifive_plic_update(plic);
             }
             return;
+        }
+    } else if (addr >= VINTERRUPTS_BASE && addr < VINTERRUPTS_BASE + 0x8) {
+        //vinterrupts = value;
+        //uint64_t vinterrupts_iter = vinterrupts;
+        // qemu_mutex_lock(&vplic_mutex);
+        /* uint64_t old_value = qatomic_fetch_or(&vinterrupts, value);
+        uint64_t vinterrupts_iter = old_value ^ value;
+        int irq = 0;
+        while (vinterrupts_iter) {
+            if ((vinterrupts_iter & 1) && ((1 << irq) & value)) {
+                sifive_plic_set_pending(plic, irq + VINTERRUPTS_IRQ_OFFSET,
+                        !!((1 << irq) & value) ? true : false);
+                qatomic_add(&requests[irq + VINTERRUPTS_IRQ_OFFSET], 1);
+                //printf("******-------insert VINTERRUPTS irq: %d! old_value: 0x%lx\n", irq, old_value);
+                //debug_flag = 1;
+            }
+                //sifive_plic_set_pending(plic, irq + VINTERRUPTS_IRQ_OFFSET, 1);
+            irq++;
+            vinterrupts_iter = vinterrupts_iter >> 1;
+        } */
+        if (value == 0) {
+            int i;
+            for (i = 0; i < 16; i++) {
+                sifive_plic_set_pending(plic, i + VINTERRUPTS_IRQ_OFFSET, false);
+                sifive_plic_update(plic);
+            }
+        } else {
+            int irq = ctz64(value) + VINTERRUPTS_IRQ_OFFSET;
+            sifive_plic_set_pending(plic, irq, true);
+            // qatomic_add(&requests[irq], 1);
+            sifive_plic_update(plic);
+            // qemu_mutex_unlock(&vplic_mutex);
         }
     }
 
@@ -440,9 +527,25 @@ static void sifive_plic_irq_request(void *opaque, int irq, int level)
     sifive_plic_update(plic);
 }
 
+/*static void *check_plic_fn(void *args)
+{
+	while (1) {
+        sleep(10);
+        for (int i = 0; i < 0x100; i++) {
+            int req = qatomic_read(&requests[i]);
+            int claim = qatomic_read(&claims[i]);
+            if (0) {
+                qemu_log("Intr 0x%x req %d claim %d\n", i, req, claim);
+            }
+        }
+    }
+    return 0;
+}*/
+
 static void sifive_plic_realize(DeviceState *dev, Error **errp)
 {
     SiFivePLICState *plic = SIFIVE_PLIC(dev);
+	// QemuThread thread;
     int i;
 
     memory_region_init_io(&plic->mmio, OBJECT(dev), &sifive_plic_ops, plic,
@@ -457,6 +560,7 @@ static void sifive_plic_realize(DeviceState *dev, Error **errp)
     plic->enable = g_new0(uint32_t, plic->num_enables);
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &plic->mmio);
     qdev_init_gpio_in(dev, sifive_plic_irq_request, plic->num_sources);
+    // qemu_thread_create(&thread, "check-plic", check_plic_fn, 0, QEMU_THREAD_JOINABLE);
 
     /* We can't allow the supervisor to control SEIP as this would allow the
      * supervisor to clear a pending external interrupt which will result in
@@ -470,6 +574,7 @@ static void sifive_plic_realize(DeviceState *dev, Error **errp)
             exit(1);
         }
     }
+    // qemu_mutex_init(&vplic_mutex);
 
     msi_nonbroken = true;
 }

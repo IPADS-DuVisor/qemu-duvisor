@@ -10,3 +10,6 @@ TAGS
 *~
 *.ast_raw
 *.depend_raw
+/.vscode
+compile_commands.json
+.cache/

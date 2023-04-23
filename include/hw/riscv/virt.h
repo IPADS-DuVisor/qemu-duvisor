@@ -67,11 +67,11 @@ enum {
     VIRTIO_IRQ = 1, /* 1 to 8 */
     VIRTIO_COUNT = 8,
     PCIE_IRQ = 0x20, /* 32 to 35 */
-    VIRTIO_NDEV = 0x35 /* Arbitrary maximum number of interrupts */
+    VIRTIO_NDEV = 0x35, /* Arbitrary maximum number of interrupts */
 };
 
-#define VIRT_PLIC_HART_CONFIG "MS"
-#define VIRT_PLIC_NUM_SOURCES 127
+#define VIRT_PLIC_HART_CONFIG "MSH"
+#define VIRT_PLIC_NUM_SOURCES 255
 #define VIRT_PLIC_NUM_PRIORITIES 7
 #define VIRT_PLIC_PRIORITY_BASE 0x04
 #define VIRT_PLIC_PENDING_BASE 0x1000
